@@ -1,0 +1,36 @@
+{
+    "name": "alphazento/support",
+    "description": "Some extra support packages for Zento ecommerce.",
+    "keywords": [
+        "laravel",
+        "zento",
+        "ecommerce",
+        "magento 2"
+    ],
+    "license": "MIT",
+    "authors": [{
+        "name": "Yongcheng.chen",
+        "email": "yongcheng.chen@live.com"
+    }],
+    "require": {
+        "php": ">=7.0",
+        "alphazento/zento": "1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ZentoSupport\\": "src/"
+        },
+        "files": []
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.0-dev"
+        },
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    }
+}
