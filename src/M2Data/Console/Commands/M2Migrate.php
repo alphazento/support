@@ -31,10 +31,29 @@ class M2Migrate extends \Zento\Kernel\PackageManager\Console\Commands\Base
      */
     public function handle()
     {
-        $seeder = new \ZentoSupport\M2Data\Seeders\CategorySeeder();
-        $seeder->run();
+        $this->info('Start migrating attribute sets ...');
+        $seeder = new \ZentoSupport\M2Data\Seeders\AttributeSetSeeder();
+        $seeder->setCommand($this)->run();
+        $this->info('Migrating attribute sets finished.');
 
+        $this->info('Start migrating categories ...');
+        $seeder = new \ZentoSupport\M2Data\Seeders\CategorySeeder();
+        $seeder->setCommand($this)->run();
+        $this->info('Migrating categories finished.');
+
+        $this->info('Start migrating products ...');
         $seeder = new \ZentoSupport\M2Data\Seeders\ProductSeeder();
+        $seeder->setCommand($this)->run();
+        $this->info('Migrating products finished.');
+
+        $this->info('Start migrating category-product bindings...');
+        $seeder = new \ZentoSupport\M2Data\Seeders\CategoryProductSeeder();
+        $seeder->setCommand($this)->run();
+        $this->info('Migrating category-product bindings finished.');
+
+        $this->info('Start migrating category-product super link bindings...');
+        $seeder = new \ZentoSupport\M2Data\Seeders\CategoryProductSuperLinkSeeder();
         $seeder->run();
+        $this->info('Migrating category-product super link bindings finished.');
     }
 }

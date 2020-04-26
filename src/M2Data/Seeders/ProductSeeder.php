@@ -2,120 +2,122 @@
 namespace ZentoSupport\M2Data\Seeders;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Traits\Macroable;
 use Zento\Catalog\Model\ORM\Product;
-use Zento\Kernel\Facades\DanamicAttributeFactory;
-use Zento\Kernel\Booster\Database\Eloquent\DA\ORM\DynamicAttributeInSet;
+
+use Zento\Catalog\Model\ORM\ProductPrice;
+use Zento\Catalog\Model\ORM\ProductRrp;
+use Zento\Catalog\Model\ORM\ProductSpecialPrice;
 
 class ProductSeeder extends \Illuminate\Database\Seeder {
-    use TraitEavHelper;
+    use TraitEavHelper, Macroable;
 
-    protected $attrsInMainTable = [
-        'default_sort_by' => 'sort_by',         //m2 attr => zento
-        'active' => 'active',
+    protected $m2AttrsMappingToZentoTableFields = [
+        'sku' => 'sku',
+        'name' => 'name',
+        'status' => 'active',
+    ];
 
-        //description group
-        'name' => 'name',         //m2 attr => zento
-        'description' => 'description',
-        'meta_description' => 'meta_description',         //m2 attr => zento
-        'meta_keyword' => 'meta_keyword',
-        'meta_title' => 'meta_title',
-
+    protected $m2AttrHandlers = [
         //price group
-        'cost' => 'cost',
-        'price' => 'price',
-        'rrp' => 'rrp',
-        'special_price' => 'special_price',
-        'special_from_date' => 'special_from',
-        'special_to_date' => 'special_to',
+        'cost' => 'saveCost',
+        'price' => 'savePrice',
+        'special_price' => 'saveSpecialPrice',
+        'special_from_date' => 'saveSpecialFromDate',
+        'special_to_date' => 'saveSpecialToDate',
+    ];
+
+    protected $attributeChangeNames = [
+        // 'url_key' => 'url'
+    ];
+
+    protected $ignoreAttrs = [
+        'small_image', 
+        'thumbnail',
+        'erin_recommends',
+        'sale' => 'sale',
+        'new' => 'new',
     ];
 
     public function run()
     {
+        $total = \ZentoSupport\M2Data\Model\ORM\Catalog\Product::count();
+        $this->command->getOutput()->progressStart($total);
+
         $collection = \ZentoSupport\M2Data\Model\ORM\Catalog\Product::with(
             [
-                'integerattrs.codedesc',
-                'varcharattrs.codedesc', 
-                'textattrs.codedesc',
-                'datetimeattrs.codedesc',
-                'decimalattrs.codedesc',
-                'galleryattrs.codedesc',
+                'integerattrs.codedesc.options.value',
+                'varcharattrs.codedesc.options.value', 
+                'textattrs.codedesc.options.value',
+                'datetimeattrs.codedesc.options.value',
+                'decimalattrs.codedesc.options.value',
+                'galleryattrs.codedesc.options.value',
                 'galleryattrs.galleryvalue',
                 'galleryattrs.video',
             ])
             ->get();
         foreach($collection as $item) {
-            $product = Product::find($item->entity_id);
-            if ($product) {
-                $product->exists = true;
-            } else {
-                $product = new Product();
-            }
+            $this->command->getOutput()->progressAdvance();
+            $product = Product::find($item->entity_id) ?? new Product();
 
             $product->id = $item->entity_id;
             $product->attribute_set_id = $item->attribute_set_id;
-            $product->model_type = $item->model_type;
+            $product->model_type = $item->type_id;
             $product->has_options = $item->has_options;
             $product->required_options = $item->required_options;
+            $product->name = '';
             $product->sku = $item->sku;
             $product->active = true;
             $product->save();
 
             foreach(['integer', 'text', 'varchar', 'datetime', 'decimal', 'gallery'] as $ftype) {
-                $relation = $ftype .'attrs';
-                foreach($item->{$relation} ?? [] as $eavItem) {
-                    echo '.';
-                    if (!$eavItem->codedesc) {
-                        continue;
-                    }
-
-                    $attrKeysInMainTable = array_keys($this->attrsInMainTable);
-                    if (in_array($eavItem->codedesc->attribute_code, $attrKeysInMainTable)) {
-                        $zentoKey = $this->attrsInMainTable[$eavItem->codedesc->attribute_code];
-                        $product->{$zentoKey} = $eavItem->value;
-                        continue;
-                    }
-
-                    $isSingleDyn = $this->isSingleEav($eavItem->codedesc->frontend_input);
-                    list($attrId, $tableName) = DanamicAttributeFactory::createRelationShipORM($product,
-                        $eavItem->codedesc->attribute_code, 
-                        [$ftype === 'gallery' ? 'varchar' : $ftype], 
-                        $isSingleDyn,
-                        !empty($eavItem->codedesc->options)
-                    );
-                    
-                    $attrInSet = DynamicAttributeInSet::where('attribute_set_id', $product->attribute_set_id)
-                        ->where('attribute_id', $attrId)
-                        ->first();
-                    if (!$attrInSet) {
-                        $attrInSet = new DynamicAttributeInSet();
-                    }
-                    $attrInSet->attribute_set_id = $product->attribute_set_id;
-                    $attrInSet->attribute_id = $attrId;
-                    $attrInSet->save();
-
-                    //migrate option value
-                    $this->migrateOptionValue($eavItem->codedesc, 'products', $attrId);
-                    
-                    if ($eavItem->value) {
-                        if ($isSingleDyn) {
-                            DanamicAttributeFactory::single($product, $eavItem->codedesc->attribute_code)->newValue($eavItem->value);
-                        } else {
-                            if ($options = DanamicAttributeFactory::option($product, $eavItem->codedesc->attribute_code)) {
-                                if ($eavItem->codedesc->frontend_input == 'multiselect') {
-                                    $values = explode(',', $eavItem->value);
-                                } else {
-                                    $values = [$eavItem->value];
-                                }
-                                foreach($values as $value) {
-                                    $options->newValue($value);
-                                }
-                            }
-                        }
-                    }
-                }
+                $this->saveEavs($item, $ftype, $product);
             }
             $product->unsetRelation('configurables');
             $product->push();
         }
+        $this->command->getOutput()->progressFinish();
+    }
+
+    protected function saveCost($product, $value) {
+        $rrpItem = ProductRrp::where('product_id', $product->id)->first() ?? new ProductRrp;
+        $rrpItem->product_id = $product->id;
+        $rrpItem->cost = $value;
+        $rrpItem->save();
+    }
+
+    protected function savePrice($product, $value) {
+        $priceItem = ProductPrice::where('product_id', $product->id)
+            ->where('customer_group_id', 0)
+            ->first() ?? new ProductPrice;
+        $priceItem->product_id = $product->id;
+        $priceItem->price = $value;
+        $priceItem->save();
+    }
+
+    protected function saveSpecialPrice($product, $value) {
+        $priceItem = ProductSpecialPrice::where('product_id', $product->id)
+            ->where('customer_group_id', 0)
+            ->first() ?? new ProductSpecialPrice;
+        $priceItem->special_price = $value;
+        $priceItem->save();
+    }
+
+    protected function saveSpecialFromDate($product, $value) {
+        $priceItem = ProductSpecialPrice::where('product_id', $product->id)
+            ->where('customer_group_id', 0)
+            ->first() ?? new ProductSpecialPrice;
+        $priceItem->product_id = $product->id;
+        $priceItem->special_from = $value;
+        $priceItem->save();
+    }
+
+    protected function saveSpecialToDate($product, $value) {
+        $priceItem = ProductSpecialPrice::where('product_id', $product->id)
+            ->where('customer_group_id', 0)
+            ->first() ?? new ProductSpecialPrice;
+        $priceItem->product_id = $product->id;
+        $priceItem->special_to = $value;
+        $priceItem->save();
     }
 }
